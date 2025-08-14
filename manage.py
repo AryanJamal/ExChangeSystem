@@ -6,7 +6,7 @@ import sys
 
 def main():
     """Run administrative tasks."""
-    settings_module = 'api.deployment_settings' if 'RENDER_EXTERNAL_HOSTNAME' in os.environ else 'api.settings'
+    settings_module = 'Brwa.deployment_settings' if 'RENDER_EXTERNAL_HOSTNAME' in os.environ else 'Brwa.settings'
     os.environ.setdefault('DJANGO_SETTINGS_MODULE',settings_module )
 
     try:
