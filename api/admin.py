@@ -5,6 +5,7 @@ from .models import *
 @admin.register(Partner)
 class PartnerAdmin(admin.ModelAdmin):
     list_display = (
+        "id",
         "name",
         "phone_number",
         "is_system_owner",

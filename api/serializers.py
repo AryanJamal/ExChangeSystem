@@ -41,46 +41,32 @@ class SafePartnerSerializer(serializers.ModelSerializer):
 
 
 # **POST for SafePartner**
+
+
 class SafePartnerCreateSerializer(serializers.ModelSerializer):
-    partner_name = serializers.CharField(write_only=True)
-    partner_phone_number = serializers.CharField(
-        write_only=True, required=False, allow_blank=True
+    partner_id = serializers.PrimaryKeyRelatedField(
+        queryset=Partner.objects.all(), write_only=True
     )
     safe_type_id = serializers.PrimaryKeyRelatedField(
         queryset=SafeType.objects.all(), write_only=True
     )
-    is_office = serializers.BooleanField(write_only=True)
-    is_person = serializers.BooleanField(write_only=True)
 
     class Meta:
         model = SafePartner
         fields = [
             "id",
-            "partner_name",
-            "partner_phone_number",
+            "partner_id",
             "safe_type_id",
             "total_usd",
             "total_usdt",
             "total_iqd",
-            "is_office",  # Include the new fields in the Meta
-            "is_person",
         ]
 
     def create(self, validated_data):
-        partner_name = validated_data.pop("partner_name")
-        partner_phone = validated_data.pop("partner_phone_number", None)
+        partner = validated_data.pop("partner_id")
         safe_type = validated_data.pop("safe_type_id")
-        is_office = validated_data.pop("is_office")
-        is_person = validated_data.pop("is_person")
-        # Create or get partner
-        partner, _ = Partner.objects.get_or_create(
-            name=partner_name,
-            defaults={"phone_number": partner_phone},
-            is_office=is_office,
-            is_person=is_person,
-        )
 
-        # Create SafePartner
+        # Create SafePartner with the existing partner
         safe_partner = SafePartner.objects.create(
             partner=partner, safe_type=safe_type, **validated_data
         )
