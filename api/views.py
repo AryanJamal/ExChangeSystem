@@ -85,6 +85,14 @@ class CryptoTransactionViewSet(viewsets.ModelViewSet):
                 except ValueError:
                     # Handle invalid date format if necessary
                     pass
+
+            if end_date_str and not start_date_str:
+                try:
+                    end_date = date.fromisoformat(end_date_str)
+                    queryset = queryset.filter(created_at__date=end_date)
+                except ValueError:
+                    # Handle invalid date format if necessary
+                    pass
         else:
             queryset = queryset.filter(created_at__date=today)
         # You can add ordering here if you want default ordering
@@ -179,6 +187,70 @@ class OutgoingMoneyViewSet(viewsets.ModelViewSet):
         if self.request.method == "POST":
             return OutgoingMoneyPostSerializer
         return OutgoingMoneyGetSerializer
+
+    def get_queryset(self):
+
+        queryset = OutgoingMoney.objects.all()
+
+        # Get query parameters from the request
+        query_params = self.request.query_params
+
+        is_filtered = any(
+            key in query_params
+            for key in [
+                "search",
+                "status",
+                "start_date",
+                "end_date",
+                "from_partner",
+                "to_partner",
+            ]
+        )
+
+        # If no filters are provided, default to today's records
+        if not is_filtered:
+            today = timezone.localdate()
+            queryset = queryset.filter(created_at__date=today)
+
+        # 1. Handle search query
+        search_query = query_params.get("search", None)
+        if search_query:
+            # Use Q objects to perform a logical OR search across multiple fields
+            queryset = queryset.filter(
+                Q(from_partner__partner__name__icontains=search_query)
+                | Q(to_partner__partner__name__icontains=search_query)
+                | Q(from_name__icontains=search_query)
+                | Q(from_number__icontains=search_query)
+                | Q(money_amount__icontains=search_query)
+            )
+
+        # 2. Handle status filter
+        status = query_params.get("status", None)
+        if status:
+            queryset = queryset.filter(status=status)
+
+        # 3. Handle date range filters
+        start_date = query_params.get("start_date", None)
+        end_date = query_params.get("end_date", None)
+
+        if start_date:
+            # Filter for transactions on or after the start date
+            queryset = queryset.filter(created_at__gte=start_date)
+
+        if end_date:
+            # Filter for transactions on or before the end date
+            queryset = queryset.filter(created_at__lte=end_date)
+
+        # 4. Handle partner filters
+        from_partner_id = query_params.get("from_partner", None)
+        if from_partner_id:
+            queryset = queryset.filter(from_partner__id=from_partner_id)
+
+        to_partner_id = query_params.get("to_partner", None)
+        if to_partner_id:
+            queryset = queryset.filter(to_partner__id=to_partner_id)
+
+        return queryset
 
 
 # SafeTransaction
