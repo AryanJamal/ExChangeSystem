@@ -6,7 +6,7 @@ from django.db import models
 # ------------------------------------
 class Partner(models.Model):
     name = models.CharField(max_length=100, unique=True)
-    phone_number = models.BigIntegerField(default=0, null=True)
+    phone_number = models.BigIntegerField(default=0, null=True, blank=True)
     is_system_owner = models.BooleanField(default=False)
     is_office = models.BooleanField(default=False)
     is_person = models.BooleanField(default=False)

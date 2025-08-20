@@ -149,11 +149,13 @@ class IncomingMoneyPostSerializer(serializers.ModelSerializer):
             "note",
         ]
 
+
 # new serializer for the status update
 class IncomingMoneyStatusUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = IncomingMoney
         fields = ["status"]
+
 
 # **GET for OutgoingMoney**
 class OutgoingMoneyGetSerializer(serializers.ModelSerializer):

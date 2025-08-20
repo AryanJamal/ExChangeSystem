@@ -1,4 +1,4 @@
-from django.db.models.signals import pre_save, post_save, pre_delete
+from django.db.models.signals import pre_save, post_save, pre_delete, post_delete
 from django.dispatch import receiver
 from django.db import transaction
 from decimal import Decimal
@@ -484,4 +484,41 @@ def handle_safe_transaction(instance):
                 partner.total_iqd -= amount
 
         # Save the updated partner balance
+        partner.save()
+
+
+@receiver(post_delete, sender=SafeTransaction)
+def safe_transaction_post_delete(sender, instance, **kwargs):
+    """
+    Reverse the balance update when a SafeTransaction is deleted.
+    """
+    handle_safe_transaction_reverse(instance)
+
+
+def handle_safe_transaction_reverse(instance):
+    """
+    Reverse the add or subtract money_amount to/from partner based on transaction_type and currency.
+    """
+    with transaction.atomic():
+        partner = instance.partner
+        amount = Decimal(instance.money_amount)
+
+        if instance.transaction_type == "ADD":
+            # If the original transaction added money, we subtract it back.
+            if instance.currency == "USDT":
+                partner.total_usdt -= amount
+            elif instance.currency == "USD":
+                partner.total_usd -= amount
+            elif instance.currency == "IQD":
+                partner.total_iqd -= amount
+
+        elif instance.transaction_type == "REMOVE":
+            # If the original transaction removed money, we add it back.
+            if instance.currency == "USDT":
+                partner.total_usdt += amount
+            elif instance.currency == "USD":
+                partner.total_usd += amount
+            elif instance.currency == "IQD":
+                partner.total_iqd += amount
+
         partner.save()
