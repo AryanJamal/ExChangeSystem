@@ -4,6 +4,7 @@ from .serializers import *
 from django.utils import timezone
 from django.db.models import Q
 from datetime import date
+from rest_framework.permissions import IsAuthenticated
 
 today = timezone.localdate()
 
@@ -12,17 +13,20 @@ today = timezone.localdate()
 class SafeTypeViewSet(viewsets.ModelViewSet):
     queryset = SafeType.objects.all()
     serializer_class = SafeTypeSerializer
+    permission_classes = [IsAuthenticated]
 
 
 # Partner
 class PartnerViewSet(viewsets.ModelViewSet):
     queryset = Partner.objects.all()
     serializer_class = PartnerSerializer
+    permission_classes = [IsAuthenticated]
 
 
 # SafePartner
 class SafePartnerViewSet(viewsets.ModelViewSet):
     queryset = SafePartner.objects.all()
+    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.request.method in ["POST", "PUT", "PATCH"]:
@@ -33,6 +37,7 @@ class SafePartnerViewSet(viewsets.ModelViewSet):
 # CryptoTransaction
 class CryptoTransactionViewSet(viewsets.ModelViewSet):
     queryset = CryptoTransaction.objects.all()
+    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.request.method == "POST":
@@ -105,6 +110,7 @@ class CryptoTransactionViewSet(viewsets.ModelViewSet):
 # TransferExchange
 class TransferExchangeViewSet(viewsets.ModelViewSet):
     queryset = TransferExchange.objects.all()
+    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.request.method == "POST":
@@ -115,6 +121,7 @@ class TransferExchangeViewSet(viewsets.ModelViewSet):
 # IncomingMoney
 class IncomingMoneyViewSet(viewsets.ModelViewSet):
     queryset = IncomingMoney.objects.all()
+    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.request.method == "POST":
@@ -182,6 +189,7 @@ class IncomingMoneyViewSet(viewsets.ModelViewSet):
 # OutgoingMoney
 class OutgoingMoneyViewSet(viewsets.ModelViewSet):
     queryset = OutgoingMoney.objects.all()
+    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.request.method == "POST":
@@ -256,8 +264,21 @@ class OutgoingMoneyViewSet(viewsets.ModelViewSet):
 # SafeTransaction
 class SafeTransactionViewSet(viewsets.ModelViewSet):
     queryset = SafeTransaction.objects.all()
+    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.request.method == "POST":
             return SafeTransactionPostSerializer
         return SafeTransactionGetSerializer
+
+
+class DebtViewSet(viewsets.ModelViewSet):
+    queryset = Debt.objects.all().order_by("-created_at")
+    serializer_class = DebtSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class DebtRepaymentViewSet(viewsets.ModelViewSet):
+    queryset = DebtRepayment.objects.all().order_by("-created_at")
+    serializer_class = DebtRepaymentSerializer
+    permission_classes = [IsAuthenticated]

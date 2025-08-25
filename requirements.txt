@@ -14,3 +14,4 @@ uvicorn==0.35.0
 whitenoise==6.9.0
 django-cors-headers==4.7.0
 python-dotenv
+djangorestframework-simplejwt

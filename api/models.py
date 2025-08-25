@@ -114,6 +114,49 @@ class CryptoTransaction(models.Model):
 
 
 # ------------------------------------
+# Debt Model
+# ------------------------------------
+class Debt(models.Model):
+    debt_safe = models.ForeignKey(
+        SafeType,
+        on_delete=models.PROTECT,
+        related_name="debt_safe",
+    )
+    debtor_name = models.CharField(max_length=100)
+    debtor_phone = models.CharField(max_length=20, blank=True, null=True)
+
+    total_amount = models.DecimalField(max_digits=20, decimal_places=2)
+    currency = models.CharField(max_length=5, choices=[("USD", "USD"), ("IQD", "IQD")], default="USD")
+
+    note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def amount_repaid(self):
+        return self.repayments.aggregate(total=models.Sum("amount"))["total"] or 0
+
+    @property
+    def remaining_amount(self):
+        return self.total_amount - self.amount_repaid
+
+    @property
+    def is_fully_paid(self):
+        return self.remaining_amount <= 0
+
+    def __str__(self):
+        return f"{self.debtor_name} owes {self.remaining_amount} {self.currency}"
+
+
+class DebtRepayment(models.Model):
+    debt = models.ForeignKey(Debt, on_delete=models.CASCADE, related_name="repayments")
+    amount = models.DecimalField(max_digits=20, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Repayment {self.amount} for {self.debt.debtor_name}"
+
+# ------------------------------------
 # 3. Transfer Exchange (Currency Conversion in Safe)
 # ------------------------------------
 class TransferExchange(models.Model):

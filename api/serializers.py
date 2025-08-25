@@ -207,3 +207,50 @@ class SafeTransactionPostSerializer(serializers.ModelSerializer):
             "currency",
             "note",
         ]
+
+
+# **GET/POST for Debts**
+class DebtRepaymentSerializer(serializers.ModelSerializer):
+    debt_id = serializers.PrimaryKeyRelatedField(
+        queryset=Debt.objects.all(), source="debt", write_only=True
+    )
+
+    class Meta:
+        model = DebtRepayment
+        fields = ["id", "debt_id", "amount", "created_at"]
+
+
+class DebtSerializer(serializers.ModelSerializer):
+    debt_safe = SafeTypeSerializer(read_only=True)
+    debt_safe_id = serializers.PrimaryKeyRelatedField(
+        queryset=SafeType.objects.all(), source="debt_safe", write_only=True
+    )
+
+    repayments = DebtRepaymentSerializer(many=True, read_only=True)
+
+    amount_repaid = serializers.DecimalField(
+        max_digits=20, decimal_places=2, read_only=True
+    )
+    remaining_amount = serializers.DecimalField(
+        max_digits=20, decimal_places=2, read_only=True
+    )
+    is_fully_paid = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = Debt
+        fields = [
+            "id",
+            "debt_safe",
+            "debt_safe_id",
+            "debtor_name",
+            "debtor_phone",
+            "total_amount",
+            "currency",
+            "note",
+            "amount_repaid",
+            "remaining_amount",
+            "is_fully_paid",
+            "repayments",
+            "created_at",
+            "updated_at",
+        ]

@@ -10,6 +10,8 @@ from .models import (
     OutgoingMoney,
     SafeTransaction,
     TransferExchange,
+    Debt,
+    DebtRepayment,
 )
 
 
@@ -522,3 +524,82 @@ def handle_safe_transaction_reverse(instance):
                 partner.total_iqd += amount
 
         partner.save()
+
+
+# *************************
+# Debt
+# *************************
+def get_system_owner_safe_partner(debt):
+    """Return SafePartner for system owner + the chosen safe."""
+    try:
+        system_owner = Partner.objects.get(is_system_owner=True)
+        safe_partner = SafePartner.objects.get(
+            partner=system_owner, safe_type=debt.debt_safe
+        )
+        return safe_partner
+    except (Partner.DoesNotExist, SafePartner.DoesNotExist):
+        return None
+
+
+# -----------------------------
+# Debt Signals
+# -----------------------------
+@receiver(post_save, sender=Debt)
+def handle_debt_created(sender, instance, created, **kwargs):
+    if created:
+        safe_partner = get_system_owner_safe_partner(instance)
+        if not safe_partner:
+            return
+
+        if instance.currency == "USD":
+            safe_partner.total_usd -= instance.total_amount
+        elif instance.currency == "IQD":
+            safe_partner.total_iqd -= int(instance.total_amount)
+        safe_partner.save()
+
+
+@receiver(post_delete, sender=Debt)
+def handle_debt_deleted(sender, instance, **kwargs):
+    safe_partner = get_system_owner_safe_partner(instance)
+    if not safe_partner:
+        return
+
+    # When deleting debt, restore the money back
+    if instance.currency == "USD":
+        safe_partner.total_usd += instance.total_amount
+    elif instance.currency == "IQD":
+        safe_partner.total_iqd += int(instance.total_amount)
+    safe_partner.save()
+
+
+# -----------------------------
+# Repayment Signals
+# -----------------------------
+@receiver(post_save, sender=DebtRepayment)
+def handle_repayment_created(sender, instance, created, **kwargs):
+    if created:
+        debt = instance.debt
+        safe_partner = get_system_owner_safe_partner(debt)
+        if not safe_partner:
+            return
+
+        if debt.currency == "USD":
+            safe_partner.total_usd += instance.amount
+        elif debt.currency == "IQD":
+            safe_partner.total_iqd += int(instance.amount)
+        safe_partner.save()
+
+
+@receiver(post_delete, sender=DebtRepayment)
+def handle_repayment_deleted(sender, instance, **kwargs):
+    debt = instance.debt
+    safe_partner = get_system_owner_safe_partner(debt)
+    if not safe_partner:
+        return
+
+    # Remove repayment → subtract from balances
+    if debt.currency == "USD":
+        safe_partner.total_usd -= instance.amount
+    elif debt.currency == "IQD":
+        safe_partner.total_iqd -= int(instance.amount)
+    safe_partner.save()
