@@ -14,6 +14,9 @@ router.register(r"outgoing-money", OutgoingMoneyViewSet)
 router.register(r"safe-transactions", SafeTransactionViewSet)
 router.register(r"debts", DebtViewSet)
 router.register(r"debt-repayments", DebtRepaymentViewSet)
+router.register(r"bonuses/today", TodayBonusViewSet, basename="bonus-today")
+router.register(r"bonuses/month", MonthBonusViewSet, basename="bonus-month")
+
 
 urlpatterns = [
     path("", include(router.urls)),

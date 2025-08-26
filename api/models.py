@@ -6,7 +6,7 @@ from django.db import models
 # ------------------------------------
 class Partner(models.Model):
     name = models.CharField(max_length=100, unique=True)
-    phone_number = models.BigIntegerField(default=0, null=True, blank=True)
+    phone_number = models.CharField(max_length=20, blank=True, null=True)
     is_system_owner = models.BooleanField(default=False)
     is_office = models.BooleanField(default=False)
     is_person = models.BooleanField(default=False)
@@ -126,7 +126,9 @@ class Debt(models.Model):
     debtor_phone = models.CharField(max_length=20, blank=True, null=True)
 
     total_amount = models.DecimalField(max_digits=20, decimal_places=2)
-    currency = models.CharField(max_length=5, choices=[("USD", "USD"), ("IQD", "IQD")], default="USD")
+    currency = models.CharField(
+        max_length=5, choices=[("USD", "USD"), ("IQD", "IQD")], default="USD"
+    )
 
     note = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -156,6 +158,7 @@ class DebtRepayment(models.Model):
     def __str__(self):
         return f"Repayment {self.amount} for {self.debt.debtor_name}"
 
+
 # ------------------------------------
 # 3. Transfer Exchange (Currency Conversion in Safe)
 # ------------------------------------
@@ -163,6 +166,10 @@ class TransferExchange(models.Model):
     EXCHANGE_CHOICES = [
         ("USD_TO_IQD", "USD to IQD"),
         ("IQD_TO_USD", "IQD to USD"),
+    ]
+    CURRENCY_CHOICES = [
+        ("USD", "USD"),
+        ("IQD", "IQD"),
     ]
     partner = models.ForeignKey(
         SafePartner,
@@ -172,6 +179,10 @@ class TransferExchange(models.Model):
     usd_amount = models.DecimalField(max_digits=20, decimal_places=2, default=0)
     iqd_amount = models.BigIntegerField(default=0)
     exchange_rate = models.DecimalField(max_digits=20, decimal_places=2)
+    my_bonus = models.DecimalField(max_digits=20, decimal_places=2, default=0)
+    bonus_currency = models.CharField(
+        max_length=5, choices=CURRENCY_CHOICES, default="USD"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

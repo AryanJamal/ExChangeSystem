@@ -105,6 +105,11 @@ class CryptoTransactionPostSerializer(serializers.ModelSerializer):
         model = CryptoTransaction
         fields = "__all__"
 
+class CryptoTransactionStatusUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CryptoTransaction
+        fields = ["status"]
+
 
 # **GET/POST for TransferExchange**
 class TransferExchangeGetSerializer(serializers.ModelSerializer):
@@ -185,6 +190,12 @@ class OutgoingMoneyPostSerializer(serializers.ModelSerializer):
             "bonus_currency",
             "note",
         ]
+
+
+class OutgoingMoneyStatusUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OutgoingMoney
+        fields = ["status"]
 
 
 # **GET for SafeTransaction**
