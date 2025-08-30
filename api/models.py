@@ -98,7 +98,11 @@ class CryptoTransaction(models.Model):
         related_name="crypto_payment_safe",
     )
     currency = models.CharField(max_length=5, choices=CURRENCY_CHOICES)
+    # it sold to stranger or maybe partners
     client_name = models.CharField(max_length=100, blank=True, null=True)
+    partner_client = models.ForeignKey(
+        Partner, on_delete=models.PROTECT, null=True, blank=True
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

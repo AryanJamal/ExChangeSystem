@@ -93,6 +93,7 @@ class SafePartnerCreateSerializer(serializers.ModelSerializer):
 # **GET for CryptoTransaction**
 class CryptoTransactionGetSerializer(serializers.ModelSerializer):
     partner = SafePartnerSerializer(read_only=True)
+    partner_client = PartnerSerializer(read_only=True)
 
     class Meta:
         model = CryptoTransaction
@@ -105,10 +106,11 @@ class CryptoTransactionPostSerializer(serializers.ModelSerializer):
         model = CryptoTransaction
         fields = "__all__"
 
+
 class CryptoTransactionStatusUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = CryptoTransaction
-        fields = ["status"]
+        fields = ["status", "bonus"]
 
 
 # **GET/POST for TransferExchange**
@@ -159,7 +161,7 @@ class IncomingMoneyPostSerializer(serializers.ModelSerializer):
 class IncomingMoneyStatusUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = IncomingMoney
-        fields = ["status"]
+        fields = ["status", "my_bonus", "partner_bonus"]
 
 
 # **GET for OutgoingMoney**
@@ -195,7 +197,7 @@ class OutgoingMoneyPostSerializer(serializers.ModelSerializer):
 class OutgoingMoneyStatusUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = OutgoingMoney
-        fields = ["status"]
+        fields = ["status", "my_bonus", "partner_bonus"]
 
 
 # **GET for SafeTransaction**

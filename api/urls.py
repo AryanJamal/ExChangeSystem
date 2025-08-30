@@ -16,6 +16,7 @@ router.register(r"debts", DebtViewSet)
 router.register(r"debt-repayments", DebtRepaymentViewSet)
 router.register(r"bonuses/today", TodayBonusViewSet, basename="bonus-today")
 router.register(r"bonuses/month", MonthBonusViewSet, basename="bonus-month")
+router.register("partners", PartnerReportViewSet, basename="partner-report")
 
 
 urlpatterns = [

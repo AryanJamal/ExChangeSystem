@@ -6,9 +6,12 @@ from django.utils import timezone
 from django.db.models import Q
 from datetime import date
 from .pagination import TenPerPagePagination
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated
 from django.db.models import Sum, F, DecimalField, Case, When
 from rest_framework.response import Response
+from django.utils.dateparse import parse_datetime
+from rest_framework.decorators import action
+from datetime import datetime
 
 today = timezone.localdate()
 
@@ -353,7 +356,7 @@ def calculate_bonus(queryset, date_field=None, start=None, end=None):
 
 
 class TodayBonusViewSet(viewsets.ViewSet):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def list(self, request):
         today = timezone.now().date()
@@ -382,7 +385,7 @@ class TodayBonusViewSet(viewsets.ViewSet):
 
 
 class MonthBonusViewSet(viewsets.ViewSet):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def list(self, request):
         now = timezone.now()
@@ -406,3 +409,58 @@ class MonthBonusViewSet(viewsets.ViewSet):
 
         bonuses = calculate_bonus([crypto_qs, transfer_qs, incoming_qs, outgoing_qs])
         return Response(bonuses)
+
+
+class PartnerReportViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=True, methods=["get"], url_path="report")
+    def report(self, request, pk=None):
+        start = request.query_params.get("start")
+        end = request.query_params.get("end")
+        try:
+            partner = Partner.objects.get(id=pk)
+        except Partner.DoesNotExist:
+            return Response({"error": "Partner not found"}, status=404)
+
+        # ✅ date filter
+        date_filter = {}
+        if start:
+            try:
+                date_filter["created_at__gte"] = parse_datetime(
+                    start
+                ) or datetime.fromisoformat(start)
+            except:
+                pass
+        if end:
+            try:
+                date_filter["created_at__lte"] = parse_datetime(
+                    end
+                ) or datetime.fromisoformat(end)
+            except:
+                pass
+
+        # ✅ Crypto Transactions
+        crypto_qs = CryptoTransaction.objects.filter(
+            Q(partner__partner=partner) | Q(partner_client=partner), **date_filter
+        ).values()
+
+        # ✅ Incoming Money
+        incoming_qs = IncomingMoney.objects.filter(
+            Q(from_partner__partner=partner) | Q(to_partner__partner=partner),
+            **date_filter,
+        ).values()
+
+        # ✅ Outgoing Money
+        outgoing_qs = OutgoingMoney.objects.filter(
+            Q(from_partner__partner=partner) | Q(to_partner__partner=partner),
+            **date_filter,
+        ).values()
+        return Response(
+            {
+                "partner": partner.name,
+                "crypto_transactions": list(crypto_qs),
+                "incoming_money": list(incoming_qs),
+                "outgoing_money": list(outgoing_qs),
+            }
+        )
