@@ -57,6 +57,8 @@ class CryptoTransactionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()  # Start with the base queryset (all objects)
 
+        if self.action in ["retrieve", "update", "partial_update", "destroy"]:
+            return queryset.order_by("-created_at")
         # Get query parameters from the request
         search_query = self.request.query_params.get("search", None)
         status = self.request.query_params.get("status", None)
@@ -146,6 +148,8 @@ class IncomingMoneyViewSet(viewsets.ModelViewSet):
         queryset = IncomingMoney.objects.all().order_by("-created_at")
         query_params = self.request.query_params
 
+        if self.action in ["retrieve", "update", "partial_update", "destroy"]:
+            return queryset.order_by("-created_at")
         # Check if any filter parameters are provided.
         # This includes all the filters you previously defined.
         is_filtered = any(
@@ -216,6 +220,8 @@ class OutgoingMoneyViewSet(viewsets.ModelViewSet):
 
         # Get query parameters from the request
         query_params = self.request.query_params
+        if self.action in ["retrieve", "update", "partial_update", "destroy"]:
+            return queryset.order_by("-created_at")
 
         is_filtered = any(
             key in query_params
@@ -241,6 +247,7 @@ class OutgoingMoneyViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(
                 Q(from_partner__partner__name__icontains=search_query)
                 | Q(to_partner__partner__name__icontains=search_query)
+                | Q(partner_client__partner__name__icontains=search_query)
                 | Q(from_name__icontains=search_query)
                 | Q(from_number__icontains=search_query)
                 | Q(money_amount__icontains=search_query)

@@ -59,7 +59,11 @@ class CryptoTransactionAdmin(admin.ModelAdmin):
         "currency",
         "crypto_safe",
     )
-    search_fields = ("partner__partner__name", "client_name")
+    search_fields = (
+        "partner__partner__name",
+        "client_name",
+        "partner_client__partner__name",
+    )
     readonly_fields = ("created_at", "updated_at")
 
 

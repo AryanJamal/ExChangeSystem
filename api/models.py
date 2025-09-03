@@ -73,7 +73,11 @@ class CryptoTransaction(models.Model):
         choices=TRANSACTION_TYPE_CHOICES,
     )
     partner = models.ForeignKey(
-        SafePartner, on_delete=models.PROTECT, null=True, blank=True
+        SafePartner,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="crypto_partner",
     )
     usdt_amount = models.DecimalField(
         max_digits=20,
@@ -101,7 +105,11 @@ class CryptoTransaction(models.Model):
     # it sold to stranger or maybe partners
     client_name = models.CharField(max_length=100, blank=True, null=True)
     partner_client = models.ForeignKey(
-        Partner, on_delete=models.PROTECT, null=True, blank=True
+        SafePartner,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="crypto_client",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -273,6 +281,28 @@ class OutgoingMoney(models.Model):
 
 
 class SafeTransaction(models.Model):
+    TRANSACTION_TYPE_CHOICES = [
+        ("ADD", "Add (Deposit)"),
+        ("REMOVE", "Remove (Withdrawal)"),
+    ]
+    CURRENCY_CHOICES = [
+        ("USDT", "USDT"),
+        ("USD", "USD"),
+        ("IQD", "IQD"),
+    ]
+    partner = models.ForeignKey(SafePartner, on_delete=models.PROTECT)
+    transaction_type = models.CharField(max_length=6, choices=TRANSACTION_TYPE_CHOICES)
+    money_amount = models.DecimalField(max_digits=20, decimal_places=2, default=0)
+    currency = models.CharField(max_length=5, choices=CURRENCY_CHOICES, default="USD")
+    note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.transaction_type.capitalize()} by {self.partner.partner.name}"
+
+
+class SafePartnerTransaction(models.Model):
     TRANSACTION_TYPE_CHOICES = [
         ("ADD", "Add (Deposit)"),
         ("REMOVE", "Remove (Withdrawal)"),
