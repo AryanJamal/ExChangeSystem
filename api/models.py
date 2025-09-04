@@ -134,7 +134,14 @@ class Debt(models.Model):
         on_delete=models.PROTECT,
         related_name="debt_safe",
     )
-    debtor_name = models.CharField(max_length=100)
+    safe_partner = models.ForeignKey(  # partner who owes money
+        "SafePartner",
+        on_delete=models.PROTECT,
+        related_name="debts",
+        null=True,
+        blank=True,
+    )
+    debtor_name = models.CharField(max_length=100, null=True, blank=True)
     debtor_phone = models.CharField(max_length=20, blank=True, null=True)
 
     total_amount = models.DecimalField(max_digits=20, decimal_places=2)
@@ -165,6 +172,17 @@ class Debt(models.Model):
 class DebtRepayment(models.Model):
     debt = models.ForeignKey(Debt, on_delete=models.CASCADE, related_name="repayments")
     amount = models.DecimalField(max_digits=20, decimal_places=2)
+    safe_type = models.ForeignKey(
+        SafeType,
+        on_delete=models.PROTECT,
+        related_name="debt_safe_repayments",
+        null=True,
+    )
+    currency = models.CharField(
+        max_length=5,
+        choices=[("USD", "USD"), ("USDT", "USDT")],
+        default="USD",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

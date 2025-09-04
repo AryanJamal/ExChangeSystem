@@ -222,15 +222,26 @@ class SafeTransactionPostSerializer(serializers.ModelSerializer):
         ]
 
 
-# **GET/POST for Debts**
 class DebtRepaymentSerializer(serializers.ModelSerializer):
     debt_id = serializers.PrimaryKeyRelatedField(
         queryset=Debt.objects.all(), source="debt", write_only=True
     )
+    safe_type = SafeTypeSerializer(read_only=True)
+    safe_type_id = serializers.PrimaryKeyRelatedField(
+        queryset=SafeType.objects.all(), source="safe_type", write_only=True
+    )
 
     class Meta:
         model = DebtRepayment
-        fields = ["id", "debt_id", "amount", "created_at"]
+        fields = [
+            "id",
+            "debt_id",
+            "safe_type",
+            "safe_type_id",
+            "amount",
+            "currency",
+            "created_at",
+        ]
 
 
 class DebtSerializer(serializers.ModelSerializer):
@@ -238,6 +249,14 @@ class DebtSerializer(serializers.ModelSerializer):
     debt_safe_id = serializers.PrimaryKeyRelatedField(
         queryset=SafeType.objects.all(), source="debt_safe", write_only=True
     )
+    safe_partner_id = serializers.PrimaryKeyRelatedField(
+        queryset=SafePartner.objects.all(),
+        source="safe_partner",
+        write_only=True,
+        allow_null=True,
+    )
+    safe_partner_name = serializers.SerializerMethodField()
+    safe_partner = serializers.StringRelatedField(read_only=True)
 
     repayments = DebtRepaymentSerializer(many=True, read_only=True)
 
@@ -255,6 +274,9 @@ class DebtSerializer(serializers.ModelSerializer):
             "id",
             "debt_safe",
             "debt_safe_id",
+            "safe_partner",
+            "safe_partner_id",
+            "safe_partner_name",
             "debtor_name",
             "debtor_phone",
             "total_amount",
@@ -267,3 +289,10 @@ class DebtSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def get_safe_partner_name(self, obj):
+        return (
+            getattr(obj.safe_partner.partner, "name", None)
+            if obj.safe_partner
+            else None
+        )

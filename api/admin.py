@@ -124,3 +124,32 @@ class SafeTransactionAdmin(admin.ModelAdmin):
     list_filter = ("transaction_type",)
     search_fields = ("partner__partner__name",)
     readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(Debt)
+class DebtAdmin(admin.ModelAdmin):
+    list_display = (
+        "debtor_name",
+        "debtor_phone",
+        "safe_partner",
+        "debt_safe",
+        "total_amount",
+        "currency",
+        "amount_repaid",
+        "remaining_amount",
+        "is_fully_paid",
+        "created_at",
+    )
+    list_filter = (
+        "currency",
+        "created_at",
+    )
+    search_fields = ("debtor_name", "debtor_phone", "note")
+    readonly_fields = ("amount_repaid", "remaining_amount", "is_fully_paid")
+
+
+@admin.register(DebtRepayment)
+class DebtRepaymentAdmin(admin.ModelAdmin):
+    list_display = ("debt", "amount", "safe_type", "currency", "created_at")
+    list_filter = ("currency", "created_at")
+    search_fields = ("debt__debtor_name",)
