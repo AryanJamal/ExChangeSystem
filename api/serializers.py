@@ -93,7 +93,7 @@ class SafePartnerCreateSerializer(serializers.ModelSerializer):
 # **GET for CryptoTransaction**
 class CryptoTransactionGetSerializer(serializers.ModelSerializer):
     partner = SafePartnerSerializer(read_only=True)
-    partner_client = PartnerSerializer(read_only=True)
+    partner_client = SafePartnerSerializer(read_only=True)
 
     class Meta:
         model = CryptoTransaction
