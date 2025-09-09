@@ -200,9 +200,10 @@ class OutgoingMoneyStatusUpdateSerializer(serializers.ModelSerializer):
         fields = ["status", "my_bonus", "partner_bonus"]
 
 
-# **GET for SafeTransaction**
 class SafeTransactionGetSerializer(serializers.ModelSerializer):
     partner = SafePartnerSerializer(read_only=True)
+    from_safepartner = SafePartnerSerializer(read_only=True)  # New field
+    to_safepartner = SafePartnerSerializer(read_only=True)  # New field
 
     class Meta:
         model = SafeTransaction
@@ -215,6 +216,8 @@ class SafeTransactionPostSerializer(serializers.ModelSerializer):
         model = SafeTransaction
         fields = [
             "partner",
+            "from_safepartner",
+            "to_safepartner",
             "transaction_type",
             "money_amount",
             "currency",

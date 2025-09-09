@@ -4,7 +4,7 @@ from .models import *
 from .serializers import *
 from django.utils import timezone
 from django.db.models import Q
-from datetime import date
+from datetime import date, timedelta
 from .pagination import TenPerPagePagination
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.db.models import Sum, F, DecimalField, Case, When
@@ -433,6 +433,21 @@ class PartnerReportViewSet(viewsets.ViewSet):
 
         date_filter = {}
         # ... (Your date filtering logic remains the same)
+        if start:
+            try:
+                date_filter["created_at__gte"] = parse_datetime(
+                    start
+                ) or datetime.fromisoformat(start)
+            except:
+                pass
+        if end:
+            try:
+                end_date = parse_datetime(end) or datetime.fromisoformat(end)
+                date_filter["created_at__lte"] = end_date + timedelta(
+                    days=1
+                ) or datetime.fromisoformat(end)
+            except:
+                pass
 
         partner_name = partner.name
 
@@ -440,8 +455,7 @@ class PartnerReportViewSet(viewsets.ViewSet):
         # The key change is here: partner_client__partner__name
         crypto_qs = (
             CryptoTransaction.objects.filter(
-                Q(partner__partner__name=partner_name)
-                | Q(partner_client__partner__name=partner_name),
+                Q(partner__partner__name=partner_name),
                 **date_filter,
             )
             .values()
@@ -451,8 +465,7 @@ class PartnerReportViewSet(viewsets.ViewSet):
         # ✅ Incoming Money
         incoming_qs = (
             IncomingMoney.objects.filter(
-                Q(from_partner__partner__name=partner_name)
-                | Q(to_partner__partner__name=partner_name),
+                Q(to_partner__partner__name=partner_name),
                 **date_filter,
             )
             .values()
@@ -461,8 +474,7 @@ class PartnerReportViewSet(viewsets.ViewSet):
 
         # ✅ Outgoing Money
         outgoing_qs = OutgoingMoney.objects.filter(
-            Q(from_partner__partner__name=partner_name)
-            | Q(to_partner__partner__name=partner_name),
+            Q(from_partner__partner__name=partner_name),
             **date_filter,
         ).values()
 

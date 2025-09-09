@@ -302,14 +302,42 @@ class SafeTransaction(models.Model):
     TRANSACTION_TYPE_CHOICES = [
         ("ADD", "Add (Deposit)"),
         ("REMOVE", "Remove (Withdrawal)"),
+        ("TRANSFER", "Transfer"),  # Added for safe-to-safe transfers
     ]
     CURRENCY_CHOICES = [
         ("USDT", "USDT"),
         ("USD", "USD"),
         ("IQD", "IQD"),
     ]
-    partner = models.ForeignKey(SafePartner, on_delete=models.PROTECT)
-    transaction_type = models.CharField(max_length=6, choices=TRANSACTION_TYPE_CHOICES)
+
+    # Old field, now can be null
+    partner = models.ForeignKey(
+        SafePartner,
+        on_delete=models.PROTECT,
+        null=True,  # Allows this field to be null for 'TRANSFER' transactions
+        blank=True,
+        related_name="transactions",  # Good practice to specify related_name
+    )
+
+    # New fields for 'TRANSFER' transactions
+    from_safepartner = models.ForeignKey(
+        SafePartner,
+        on_delete=models.PROTECT,
+        null=True,  # This is only used for 'TRANSFER' type
+        blank=True,
+        related_name="sent_transfers",
+    )
+    to_safepartner = models.ForeignKey(
+        SafePartner,
+        on_delete=models.PROTECT,
+        null=True,  # This is only used for 'TRANSFER' type
+        blank=True,
+        related_name="received_transfers",
+    )
+
+    transaction_type = models.CharField(
+        max_length=8, choices=TRANSACTION_TYPE_CHOICES
+    )  # Increased max_length
     money_amount = models.DecimalField(max_digits=20, decimal_places=2, default=0)
     currency = models.CharField(max_length=5, choices=CURRENCY_CHOICES, default="USD")
     note = models.TextField(blank=True)
@@ -317,26 +345,9 @@ class SafeTransaction(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.transaction_type.capitalize()} by {self.partner.partner.name}"
-
-
-class SafePartnerTransaction(models.Model):
-    TRANSACTION_TYPE_CHOICES = [
-        ("ADD", "Add (Deposit)"),
-        ("REMOVE", "Remove (Withdrawal)"),
-    ]
-    CURRENCY_CHOICES = [
-        ("USDT", "USDT"),
-        ("USD", "USD"),
-        ("IQD", "IQD"),
-    ]
-    partner = models.ForeignKey(SafePartner, on_delete=models.PROTECT)
-    transaction_type = models.CharField(max_length=6, choices=TRANSACTION_TYPE_CHOICES)
-    money_amount = models.DecimalField(max_digits=20, decimal_places=2, default=0)
-    currency = models.CharField(max_length=5, choices=CURRENCY_CHOICES, default="USD")
-    note = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return f"{self.transaction_type.capitalize()} by {self.partner.partner.name}"
+        if self.transaction_type == "TRANSFER":
+            return f"Transfer from {self.from_safepartner.partner.name} to {self.to_safepartner.partner.name}"
+        else:
+            return (
+                f"{self.get_transaction_type_display()} by {self.partner.partner.name}"
+            )

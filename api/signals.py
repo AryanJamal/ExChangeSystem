@@ -507,10 +507,10 @@ def outgoing_money_post_delete(sender, instance, **kwargs):
 @receiver(post_save, sender=SafeTransaction)
 def safe_transaction_post_save(sender, instance, created, **kwargs):
     """
-    Handle balance updates when SafeTransaction is created
+    Handle balance updates when a SafePartnerTransaction is created.
     """
     if not created:
-        # Only process new transactions to avoid duplicate processing
+        # Only process new transactions
         return
 
     handle_safe_transaction(instance)
@@ -518,69 +518,122 @@ def safe_transaction_post_save(sender, instance, created, **kwargs):
 
 def handle_safe_transaction(instance):
     """
-    Add or subtract money_amount to/from partner based on transaction_type and currency
+    Updates safe partner balances based on the transaction type.
     """
     with transaction.atomic():
-        partner = instance.partner
         amount = Decimal(instance.money_amount)
+        currency = instance.currency
 
         if instance.transaction_type == "ADD":
-            # Add money to partner's balance
-            if instance.currency == "USDT":
+            # Adds money to the specified partner.
+            partner = instance.partner
+            if currency == "USDT":
                 partner.total_usdt += amount
-            elif instance.currency == "USD":
+            elif currency == "USD":
                 partner.total_usd += amount
-            elif instance.currency == "IQD":
+            elif currency == "IQD":
                 partner.total_iqd += amount
+            partner.save()
 
         elif instance.transaction_type == "REMOVE":
-            # Subtract money from partner's balance
-            if instance.currency == "USDT":
+            # Subtracts money from the specified partner.
+            partner = instance.partner
+            if currency == "USDT":
                 partner.total_usdt -= amount
-            elif instance.currency == "USD":
+            elif currency == "USD":
                 partner.total_usd -= amount
-            elif instance.currency == "IQD":
+            elif currency == "IQD":
                 partner.total_iqd -= amount
+            partner.save()
 
-        # Save the updated partner balance
-        partner.save()
+        elif instance.transaction_type == "TRANSFER":
+            # Transfers money from one partner to another.
+            from_partner = instance.from_safepartner
+            to_partner = instance.to_safepartner
+
+            # Debit the 'from' partner
+            if currency == "USDT":
+                from_partner.total_usdt -= amount
+            elif currency == "USD":
+                from_partner.total_usd -= amount
+            elif currency == "IQD":
+                from_partner.total_iqd -= amount
+
+            # Credit the 'to' partner
+            if currency == "USDT":
+                to_partner.total_usdt += amount
+            elif currency == "USD":
+                to_partner.total_usd += amount
+            elif currency == "IQD":
+                to_partner.total_iqd += amount
+
+            # Save both partners within the atomic block
+            from_partner.save()
+            to_partner.save()
 
 
 @receiver(post_delete, sender=SafeTransaction)
 def safe_transaction_post_delete(sender, instance, **kwargs):
     """
-    Reverse the balance update when a SafeTransaction is deleted.
+    Reverses the balance update when a SafePartnerTransaction is deleted.
     """
     handle_safe_transaction_reverse(instance)
 
 
 def handle_safe_transaction_reverse(instance):
     """
-    Reverse the add or subtract money_amount to/from partner based on transaction_type and currency.
+    Reverses the balance update for any transaction type.
     """
     with transaction.atomic():
-        partner = instance.partner
         amount = Decimal(instance.money_amount)
+        currency = instance.currency
 
         if instance.transaction_type == "ADD":
-            # If the original transaction added money, we subtract it back.
-            if instance.currency == "USDT":
+            # Reverses an 'ADD' transaction by subtracting.
+            partner = instance.partner
+            if currency == "USDT":
                 partner.total_usdt -= amount
-            elif instance.currency == "USD":
+            elif currency == "USD":
                 partner.total_usd -= amount
-            elif instance.currency == "IQD":
+            elif currency == "IQD":
                 partner.total_iqd -= amount
+            partner.save()
 
         elif instance.transaction_type == "REMOVE":
-            # If the original transaction removed money, we add it back.
-            if instance.currency == "USDT":
+            # Reverses a 'REMOVE' transaction by adding.
+            partner = instance.partner
+            if currency == "USDT":
                 partner.total_usdt += amount
-            elif instance.currency == "USD":
+            elif currency == "USD":
                 partner.total_usd += amount
-            elif instance.currency == "IQD":
+            elif currency == "IQD":
                 partner.total_iqd += amount
+            partner.save()
 
-        partner.save()
+        elif instance.transaction_type == "TRANSFER":
+            # Reverses a 'TRANSFER' by crediting the 'from' partner and debiting the 'to' partner.
+            from_partner = instance.from_safepartner
+            to_partner = instance.to_safepartner
+
+            # Reverse the debit on the 'from' partner
+            if currency == "USDT":
+                from_partner.total_usdt += amount
+            elif currency == "USD":
+                from_partner.total_usd += amount
+            elif currency == "IQD":
+                from_partner.total_iqd += amount
+
+            # Reverse the credit on the 'to' partner
+            if currency == "USDT":
+                to_partner.total_usdt -= amount
+            elif currency == "USD":
+                to_partner.total_usd -= amount
+            elif currency == "IQD":
+                to_partner.total_iqd -= amount
+
+            # Save both partners
+            from_partner.save()
+            to_partner.save()
 
 
 # *************************
