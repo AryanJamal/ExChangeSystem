@@ -1,5 +1,7 @@
 from django.db import models
 
+from decimal import Decimal
+
 
 # ------------------------------------
 # 1. Partner
@@ -60,7 +62,6 @@ class CryptoTransaction(models.Model):
     STATUS_CHOICES = [
         ("Pending", "Pending"),
         ("Completed", "Completed"),
-        ("Cancelled", "Cancelled"),
     ]
     CURRENCY_CHOICES = [
         ("USDT", "USDT"),
@@ -129,6 +130,11 @@ class CryptoTransaction(models.Model):
 # Debt Model
 # ------------------------------------
 class Debt(models.Model):
+    CURRENCY_CHOICES = [
+        ("USDT", "USDT"),
+        ("USD", "USD"),
+        ("IQD", "IQD"),
+    ]
     debt_safe = models.ForeignKey(
         SafeType,
         on_delete=models.PROTECT,
@@ -145,9 +151,7 @@ class Debt(models.Model):
     debtor_phone = models.CharField(max_length=20, blank=True, null=True)
 
     total_amount = models.DecimalField(max_digits=20, decimal_places=2)
-    currency = models.CharField(
-        max_length=5, choices=[("USD", "USD"), ("IQD", "IQD")], default="USD"
-    )
+    currency = models.CharField(max_length=5, choices=CURRENCY_CHOICES, default="USD")
 
     note = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -155,7 +159,11 @@ class Debt(models.Model):
 
     @property
     def amount_repaid(self):
-        return self.repayments.aggregate(total=models.Sum("amount"))["total"] or 0
+        """Sum repayments converted into the debt's currency."""
+        total = Decimal("0.00")
+        for repayment in self.repayments.all():
+            total += repayment.converted_amount(self.currency)
+        return total
 
     @property
     def remaining_amount(self):
@@ -170,6 +178,11 @@ class Debt(models.Model):
 
 
 class DebtRepayment(models.Model):
+    CURRENCY_CHOICES = [
+        ("USDT", "USDT"),
+        ("USD", "USD"),
+        ("IQD", "IQD"),
+    ]
     debt = models.ForeignKey(Debt, on_delete=models.CASCADE, related_name="repayments")
     amount = models.DecimalField(max_digits=20, decimal_places=2)
     safe_type = models.ForeignKey(
@@ -180,13 +193,33 @@ class DebtRepayment(models.Model):
     )
     currency = models.CharField(
         max_length=5,
-        choices=[("USD", "USD"), ("USDT", "USDT")],
+        choices=CURRENCY_CHOICES,
         default="USD",
+    )
+    # 👇 New field: conversion rate relative to the debt’s currency
+    conversion_rate = models.DecimalField(
+        max_digits=20,
+        decimal_places=6,
+        default=1.0,
+        help_text="Rate to convert repayment currency to debt currency",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def converted_amount(self, target_currency=None):
+        """
+        Convert repayment amount into target currency.
+        Currently assumes conversion_rate already set correctly.
+        """
+        if self.debt.currency == "USD":
+            if self.currency == "IQD":
+                return self.amount / self.conversion_rate
+        if self.debt.currency == "IQD":
+            if self.currency == "USD":
+                return self.amount * self.conversion_rate
+        return self.amount * self.conversion_rate
+
     def __str__(self):
-        return f"Repayment {self.amount} for {self.debt.debtor_name}"
+        return f"Repayment {self.amount} {self.currency} for {self.debt.debtor_name}"
 
 
 # ------------------------------------

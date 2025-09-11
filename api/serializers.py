@@ -234,6 +234,12 @@ class DebtRepaymentSerializer(serializers.ModelSerializer):
         queryset=SafeType.objects.all(), source="safe_type", write_only=True
     )
 
+    # 👇 New fields
+    conversion_rate = serializers.DecimalField(
+        max_digits=20, decimal_places=6, required=True
+    )
+    converted_amount = serializers.SerializerMethodField()
+
     class Meta:
         model = DebtRepayment
         fields = [
@@ -243,8 +249,14 @@ class DebtRepaymentSerializer(serializers.ModelSerializer):
             "safe_type_id",
             "amount",
             "currency",
+            "conversion_rate",  # NEW
+            "converted_amount",  # NEW (calculated value)
             "created_at",
         ]
+
+    def get_converted_amount(self, obj):
+        """Return repayment converted into the debt’s currency"""
+        return obj.converted_amount(target_currency=obj.debt.currency)
 
 
 class DebtSerializer(serializers.ModelSerializer):

@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django.forms import DecimalField
 from rest_framework import viewsets
 from .models import *
@@ -321,9 +322,9 @@ def calculate_bonus(queryset, date_field=None, start=None, end=None):
         queryset[0]
         .annotate(
             adjusted_bonus=Case(
-                When(partner__isnull=False, then=F("bonus") / 2.0),
+                When(partner__isnull=False, then=F("bonus") / Decimal("2")),
                 default=F("bonus"),
-                output_field=DecimalField(max_digits=20, decimal_places=4),
+                output_field=DecimalField(max_digits=20, decimal_places=2),
             )
         )
         .values("bonus_currency")

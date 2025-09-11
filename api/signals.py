@@ -666,8 +666,10 @@ def handle_debt_created(sender, instance, created, **kwargs):
 
     if instance.currency == "USD":
         safe_partner.total_usd -= instance.total_amount
+    elif instance.currency == "USDT":
+        safe_partner.total_usdt -= instance.total_amount
     elif instance.currency == "IQD":
-        safe_partner.total_iqd -= int(instance.total_amount)
+        safe_partner.total_iqd -= instance.total_amount
     safe_partner.save()
 
 
@@ -680,39 +682,50 @@ def handle_repayment_created(sender, instance, created, **kwargs):
         return
 
     debt = instance.debt
-
-    # Calculate total repaid so far
-    total_repaid = debt.repayments.aggregate(total=models.Sum("amount"))["total"] or 0
-
-    # Normal repayment portion (up to debt total)
-    normal_repayment = min(
-        instance.amount, max(0, debt.total_amount - (total_repaid - instance.amount))
-    )
-
-    # Extra repayment portion (beyond debt total)
-    extra_amount = max(0, total_repaid - debt.total_amount)
-
-    # 1. Add only the normal repayment part to owner's safe
-    try:
-        system_owner = Partner.objects.get(is_system_owner=True)
-        owner_safe_partner = SafePartner.objects.get(
-            partner=system_owner, safe_type=instance.safe_type
-        )
-    except (Partner.DoesNotExist, SafePartner.DoesNotExist):
-        owner_safe_partner = None
-
-    if owner_safe_partner and normal_repayment > 0:
-        if instance.currency == "USD":
-            owner_safe_partner.total_usd += normal_repayment
-        elif instance.currency == "USDT":
-            owner_safe_partner.total_usdt += normal_repayment
-        elif instance.currency == "IQD":
-            owner_safe_partner.total_iqd += int(normal_repayment)
-        owner_safe_partner.save()
-
-    # 2. Add repayment (including extra) to debtor's safe
     debtor_safe_partner = debt.safe_partner
-    if debtor_safe_partner:
+    if not debtor_safe_partner:
+        return
+
+    # repayment converted into debt currency
+    converted = instance.converted_amount(debt.currency)
+
+    # already repaid before this repayment
+    already_repaid = debt.amount_repaid - converted
+    remaining_before = max(0, debt.total_amount - already_repaid)
+
+    # split into normal vs extra (in debt currency)
+    normal_repayment = min(converted, remaining_before)
+    extra_amount = max(0, converted - remaining_before)
+
+    # --------------------------------------
+    # CASE 1: Same currency repayment
+    # --------------------------------------
+    if instance.currency == debt.currency:
+        # always add (normal + extra) to debtor safe partner
+        if instance.currency == "USD":
+            debtor_safe_partner.total_usd += instance.amount
+        elif instance.currency == "USDT":
+            debtor_safe_partner.total_usdt += instance.amount
+        elif instance.currency == "IQD":
+            debtor_safe_partner.total_iqd += int(instance.amount)
+        debtor_safe_partner.save()
+
+    # --------------------------------------
+    # CASE 2: Different currency repayment
+    # --------------------------------------
+    else:
+        try:
+            system_owner = Partner.objects.get(is_system_owner=True)
+            owner_safe_partner_debt = SafePartner.objects.get(
+                partner=system_owner, safe_type=debt.debt_safe
+            )
+            owner_safe_partner_repayment = SafePartner.objects.get(
+                partner=system_owner, safe_type=instance.safe_type
+            )
+        except (Partner.DoesNotExist, SafePartner.DoesNotExist):
+            return
+
+        # 2a. Add converted normal repayment to debtor safe partner (in debt currency)
         if debt.currency == "USD":
             debtor_safe_partner.total_usd += normal_repayment
         elif debt.currency == "USDT":
@@ -721,15 +734,42 @@ def handle_repayment_created(sender, instance, created, **kwargs):
             debtor_safe_partner.total_iqd += int(normal_repayment)
         debtor_safe_partner.save()
 
-    # 3. If there is extra, put it into debtor's safe (not owner)
-    if extra_amount > 0 and debtor_safe_partner:
+        # 2b. Subtract converted normal repayment from owner's debt safe (in debt currency)
+        if debt.currency == "USD":
+            owner_safe_partner_debt.total_usd -= normal_repayment
+        elif debt.currency == "USDT":
+            owner_safe_partner_debt.total_usdt -= normal_repayment
+        elif debt.currency == "IQD":
+            owner_safe_partner_debt.total_iqd -= int(normal_repayment)
+        owner_safe_partner_debt.save()
+
+        # convert normal repayment (debt currency) back to repayment currency
+        if instance.currency == "IQD":
+            normal_in_repayment_currency = normal_repayment * instance.conversion_rate
+        else:
+            normal_in_repayment_currency = normal_repayment / instance.conversion_rate
+
         if instance.currency == "USD":
-            debtor_safe_partner.total_usd += extra_amount
+            owner_safe_partner_repayment.total_usd += normal_in_repayment_currency
         elif instance.currency == "USDT":
-            debtor_safe_partner.total_usdt += extra_amount
+            owner_safe_partner_repayment.total_usdt += normal_in_repayment_currency
         elif instance.currency == "IQD":
-            debtor_safe_partner.total_iqd += int(extra_amount)
-        debtor_safe_partner.save()
+            owner_safe_partner_repayment.total_iqd += int(normal_in_repayment_currency)
+        owner_safe_partner_repayment.save()
+
+        # 2d. Handle overpayment: subtract extra from owner’s repayment safe and add to debtor safe
+        if extra_amount > 0:
+            if instance.currency == "USD":
+                debtor_safe_partner.total_usd += instance.amount - normal_repayment
+            elif instance.currency == "USDT":
+                debtor_safe_partner.total_usdt += instance.amount - normal_repayment
+            elif instance.currency == "IQD":
+                overpaid_iqd = int(
+                    instance.amount - (normal_repayment / instance.conversion_rate)
+                )
+                debtor_safe_partner.total_iqd += overpaid_iqd
+
+            debtor_safe_partner.save()
 
 
 # -----------------------------
@@ -749,52 +789,57 @@ def handle_debt_deleted(sender, instance, **kwargs):
     safe_partner.save()
 
 
-# -----------------------------
-# Repayment Delete Signals
-# -----------------------------
 @receiver(post_delete, sender=DebtRepayment)
 def handle_repayment_deleted(sender, instance, **kwargs):
+    """
+    Handles the deletion of a DebtRepayment object by reversing the changes
+    made when the repayment was created.
+    """
     debt = instance.debt
-
-    # Calculate total repaid excluding this instance (since it's being deleted)
-    total_repaid_excluding_this = (
-        debt.repayments.exclude(id=instance.id).aggregate(total=models.Sum("amount"))[
-            "total"
-        ]
-        or 0
-    )
-
-    # Calculate what portion of this repayment was "normal" vs "extra"
-    # Normal repayment portion (up to debt total)
-    normal_repayment = min(
-        instance.amount, max(0, debt.total_amount - total_repaid_excluding_this)
-    )
-
-    # Extra repayment portion (beyond debt total)
-    total_repaid_including_this = total_repaid_excluding_this + instance.amount
-    extra_amount = max(0, total_repaid_including_this - debt.total_amount)
-
-    # 1. Subtract the normal repayment part from owner's safe
-    try:
-        system_owner = Partner.objects.get(is_system_owner=True)
-        owner_safe_partner = SafePartner.objects.get(
-            partner=system_owner, safe_type=instance.safe_type
-        )
-    except (Partner.DoesNotExist, SafePartner.DoesNotExist):
-        owner_safe_partner = None
-
-    if owner_safe_partner and normal_repayment > 0:
-        if instance.currency == "USD":
-            owner_safe_partner.total_usd -= normal_repayment
-        elif instance.currency == "USDT":
-            owner_safe_partner.total_usdt -= normal_repayment
-        elif instance.currency == "IQD":
-            owner_safe_partner.total_iqd -= int(normal_repayment)
-        owner_safe_partner.save()
-
-    # 2. Subtract repayment (normal portion) from debtor's safe
     debtor_safe_partner = debt.safe_partner
-    if debtor_safe_partner:
+    if not debtor_safe_partner:
+        return
+
+    # Repayment converted into debt currency
+    converted = instance.converted_amount(debt.currency)
+
+    # Already repaid after this repayment was made
+    already_repaid = debt.amount_repaid + converted
+    remaining_after = max(0, debt.total_amount - already_repaid)
+
+    # Split into normal vs extra (in debt currency)
+    normal_repayment = min(converted, remaining_after)
+    extra_amount = max(0, converted - remaining_after)
+
+    # --------------------------------------
+    # CASE 1: Same currency repayment
+    # --------------------------------------
+    if instance.currency == debt.currency:
+        # Subtract the full amount from the debtor's safe partner
+        if instance.currency == "USD":
+            debtor_safe_partner.total_usd -= instance.amount
+        elif instance.currency == "USDT":
+            debtor_safe_partner.total_usdt -= instance.amount
+        elif instance.currency == "IQD":
+            debtor_safe_partner.total_iqd -= int(instance.amount)
+        debtor_safe_partner.save()
+
+    # --------------------------------------
+    # CASE 2: Different currency repayment
+    # --------------------------------------
+    else:
+        try:
+            system_owner = Partner.objects.get(is_system_owner=True)
+            owner_safe_partner_debt = SafePartner.objects.get(
+                partner=system_owner, safe_type=debt.debt_safe
+            )
+            owner_safe_partner_repayment = SafePartner.objects.get(
+                partner=system_owner, safe_type=instance.safe_type
+            )
+        except (Partner.DoesNotExist, SafePartner.DoesNotExist):
+            return
+
+        # 2a. Subtract converted normal repayment from debtor safe partner (in debt currency)
         if debt.currency == "USD":
             debtor_safe_partner.total_usd -= normal_repayment
         elif debt.currency == "USDT":
@@ -803,12 +848,39 @@ def handle_repayment_deleted(sender, instance, **kwargs):
             debtor_safe_partner.total_iqd -= int(normal_repayment)
         debtor_safe_partner.save()
 
-    # 3. If there was extra amount, subtract it from debtor's safe
-    if extra_amount > 0 and debtor_safe_partner:
+        # 2b. Add converted normal repayment to owner's debt safe (in debt currency)
+        if debt.currency == "USD":
+            owner_safe_partner_debt.total_usd += normal_repayment
+        elif debt.currency == "USDT":
+            owner_safe_partner_debt.total_usdt += normal_repayment
+        elif debt.currency == "IQD":
+            owner_safe_partner_debt.total_iqd += int(normal_repayment)
+        owner_safe_partner_debt.save()
+
+        # convert normal repayment (debt currency) back to repayment currency
+        if instance.currency == "IQD":
+            normal_in_repayment_currency = normal_repayment * instance.conversion_rate
+        else:
+            normal_in_repayment_currency = normal_repayment / instance.conversion_rate
+
+        # 2c. Subtract the normal repayment from the owner's repayment safe
         if instance.currency == "USD":
-            debtor_safe_partner.total_usd -= extra_amount
+            owner_safe_partner_repayment.total_usd -= normal_in_repayment_currency
         elif instance.currency == "USDT":
-            debtor_safe_partner.total_usdt -= extra_amount
+            owner_safe_partner_repayment.total_usdt -= normal_in_repayment_currency
         elif instance.currency == "IQD":
-            debtor_safe_partner.total_iqd -= int(extra_amount)
-        debtor_safe_partner.save()
+            owner_safe_partner_repayment.total_iqd -= int(normal_in_repayment_currency)
+        owner_safe_partner_repayment.save()
+
+        # 2d. Handle overpayment: subtract overpaid amount from debtor safe
+        if extra_amount > 0:
+            if instance.currency == "USD":
+                debtor_safe_partner.total_usd -= instance.amount - normal_repayment
+            elif instance.currency == "USDT":
+                debtor_safe_partner.total_usdt -= instance.amount - normal_repayment
+            elif instance.currency == "IQD":
+                overpaid_iqd = int(
+                    instance.amount - (normal_repayment / instance.conversion_rate)
+                )
+                debtor_safe_partner.total_iqd -= overpaid_iqd
+            debtor_safe_partner.save()
