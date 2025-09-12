@@ -75,8 +75,9 @@ class CryptoTransactionViewSet(viewsets.ModelViewSet):
             if search_query:
                 queryset = queryset.filter(
                     Q(client_name__icontains=search_query)
+                    | Q(partner__partner__name__icontains=search_query)
                     | Q(
-                        partner__partner__name__icontains=search_query
+                        partner_client__partner__name__icontains=search_query
                     )  # Assuming partner has a nested partner.name
                 )
 

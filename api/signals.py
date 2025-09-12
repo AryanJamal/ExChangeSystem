@@ -604,6 +604,17 @@ def handle_safe_transaction(instance):
                 partner.total_iqd -= amount
             partner.save()
 
+        elif instance.transaction_type == "EXPENSE":
+            # Subtracts money from the specified partner.
+            partner = instance.partner
+            if currency == "USDT":
+                partner.total_usdt -= amount
+            elif currency == "USD":
+                partner.total_usd -= amount
+            elif currency == "IQD":
+                partner.total_iqd -= amount
+            partner.save()
+
         elif instance.transaction_type == "TRANSFER":
             # Transfers money from one partner to another.
             from_partner = instance.from_safepartner
@@ -659,6 +670,17 @@ def handle_safe_transaction_reverse(instance):
 
         elif instance.transaction_type == "REMOVE":
             # Reverses a 'REMOVE' transaction by adding.
+            partner = instance.partner
+            if currency == "USDT":
+                partner.total_usdt += amount
+            elif currency == "USD":
+                partner.total_usd += amount
+            elif currency == "IQD":
+                partner.total_iqd += amount
+            partner.save()
+        
+        elif instance.transaction_type == "EXPENSE":
+            # Subtracts money from the specified partner.
             partner = instance.partner
             if currency == "USDT":
                 partner.total_usdt += amount

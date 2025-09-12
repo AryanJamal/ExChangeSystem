@@ -337,6 +337,7 @@ class SafeTransaction(models.Model):
     TRANSACTION_TYPE_CHOICES = [
         ("ADD", "Add (Deposit)"),
         ("REMOVE", "Remove (Withdrawal)"),
+        ("EXPENSE", "Expense"),
         ("TRANSFER", "Transfer"),  # Added for safe-to-safe transfers
     ]
     CURRENCY_CHOICES = [
