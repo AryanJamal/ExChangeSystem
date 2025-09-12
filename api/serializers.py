@@ -146,6 +146,7 @@ class IncomingMoneyPostSerializer(serializers.ModelSerializer):
             "from_partner",
             "money_amount",
             "currency",
+            'is_received',
             "to_partner",
             "to_name",
             "to_number",
@@ -181,6 +182,7 @@ class OutgoingMoneyPostSerializer(serializers.ModelSerializer):
         fields = [
             "from_partner",
             "money_amount",
+            'is_received',
             "currency",
             "to_partner",
             "from_name",

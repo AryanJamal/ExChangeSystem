@@ -33,6 +33,7 @@ class SafeTypeAdmin(admin.ModelAdmin):
 @admin.register(SafePartner)
 class SafePartnerAdmin(admin.ModelAdmin):
     list_display = (
+        "id",
         "partner",
         "safe_type",
         "total_usd",

@@ -273,12 +273,14 @@ def after_save_incoming(sender, instance, created, **kwargs):
     # ✅ On Create
     if created:
         # Subtract from from_partner immediately
+
         adjust_balance(from_partner, -instance.money_amount, instance.currency)
 
         if instance.status == "Completed":
             # Credit to_partner
-            if to_partner:
-                adjust_balance(to_partner, instance.money_amount, instance.currency)
+            if not instance.is_received:
+                if to_partner:
+                    adjust_balance(to_partner, instance.money_amount, instance.currency)
             # Add bonuses
             adjust_balance(owner_safe, instance.my_bonus, instance.bonus_currency)
             adjust_balance(
@@ -291,8 +293,16 @@ def after_save_incoming(sender, instance, created, **kwargs):
 
         # If status changed from Pending → Completed
         if old_status == "Pending" and instance.status == "Completed":
-            if to_partner:
-                adjust_balance(to_partner, instance.money_amount, instance.currency)
+            if not instance.is_received:
+                if to_partner:
+                    if to_partner == owner_safe:
+                        adjust_balance(
+                            owner_safe, instance.money_amount, instance.currency
+                        )
+                    else:
+                        adjust_balance(
+                            to_partner, instance.money_amount, instance.currency
+                        )
             adjust_balance(owner_safe, instance.my_bonus, instance.bonus_currency)
             adjust_balance(
                 from_partner, instance.partner_bonus, instance.bonus_currency
@@ -311,14 +321,16 @@ def after_save_incoming(sender, instance, created, **kwargs):
             )
 
             # rollback old values
-            if to_partner:
-                adjust_balance(to_partner, -old_amount, old_currency)
+            if not instance.is_received:
+                if to_partner:
+                    adjust_balance(to_partner, -old_amount, old_currency)
             adjust_balance(owner_safe, -old_my_bonus, old_bonus_currency)
             adjust_balance(from_partner, -old_partner_bonus, old_bonus_currency)
 
             # apply new values
-            if to_partner:
-                adjust_balance(to_partner, instance.money_amount, instance.currency)
+            if not instance.is_received:
+                if to_partner:
+                    adjust_balance(to_partner, instance.money_amount, instance.currency)
             adjust_balance(owner_safe, instance.my_bonus, instance.bonus_currency)
             adjust_balance(
                 from_partner, instance.partner_bonus, instance.bonus_currency
@@ -335,8 +347,16 @@ def after_delete_incoming(sender, instance, **kwargs):
     adjust_balance(from_partner, instance.money_amount, instance.currency)
 
     if instance.status == "Completed":
-        if to_partner:
-            adjust_balance(to_partner, -instance.money_amount, instance.currency)
+        if not instance.is_received:
+            if to_partner:
+                if to_partner == owner_safe:
+                    adjust_balance(
+                        owner_safe, -instance.money_amount, instance.currency
+                    )
+                else:
+                    adjust_balance(
+                        to_partner, -instance.money_amount, instance.currency
+                    )
         adjust_balance(owner_safe, -instance.my_bonus, instance.bonus_currency)
         adjust_balance(from_partner, -instance.partner_bonus, instance.bonus_currency)
 
@@ -381,26 +401,34 @@ def outgoing_money_post_save(sender, instance, created, **kwargs):
         # --- Handle creation ---
         if created:
             # Add money_amount to to_partner
-            if instance.to_partner:
-                if instance.currency == "USD":
-                    instance.to_partner.total_usd += Decimal(instance.money_amount)
-                elif instance.currency == "IQD":
-                    instance.to_partner.total_iqd += Decimal(instance.money_amount)
-                instance.to_partner.save()
+            if not instance.is_received:
+                if instance.to_partner:
+                    if instance.currency == "USD":
+                        instance.to_partner.total_usd += Decimal(instance.money_amount)
+                    elif instance.currency == "IQD":
+                        instance.to_partner.total_iqd += Decimal(instance.money_amount)
+                    instance.to_partner.save()
 
             # If status is Completed, apply bonuses and from_partner deduction
             if instance.status == "Completed":
                 # Deduct from from_partner if exists
                 if instance.from_partner:
-                    if instance.currency == "USD":
-                        instance.from_partner.total_usd -= Decimal(
-                            instance.money_amount
-                        )
-                    elif instance.currency == "IQD":
-                        instance.from_partner.total_iqd -= Decimal(
-                            instance.money_amount
-                        )
-                    instance.from_partner.save()
+                    if instance.from_partner == owner_safe:  # if it's the system owner
+                        if instance.currency == "USD":
+                            owner_safe.total_usd -= Decimal(instance.money_amount)
+                        elif instance.currency == "IQD":
+                            owner_safe.total_iqd -= Decimal(instance.money_amount)
+                        owner_safe.save()
+                    else:
+                        if instance.currency == "USD":
+                            instance.from_partner.total_usd -= Decimal(
+                                instance.money_amount
+                            )
+                        elif instance.currency == "IQD":
+                            instance.from_partner.total_iqd -= Decimal(
+                                instance.money_amount
+                            )
+                        instance.from_partner.save()
 
                 # Add my_bonus to owner
                 if instance.bonus_currency == "USD":
@@ -410,12 +438,17 @@ def outgoing_money_post_save(sender, instance, created, **kwargs):
                 owner_safe.save()
 
                 # Add partner_bonus to to_partner if exists
-                if instance.to_partner:
-                    if instance.bonus_currency == "USD":
-                        instance.to_partner.total_usd += Decimal(instance.partner_bonus)
-                    elif instance.bonus_currency == "IQD":
-                        instance.to_partner.total_iqd += Decimal(instance.partner_bonus)
-                    instance.to_partner.save()
+                if not instance.is_received:
+                    if instance.to_partner:
+                        if instance.bonus_currency == "USD":
+                            instance.to_partner.total_usd += Decimal(
+                                instance.partner_bonus
+                            )
+                        elif instance.bonus_currency == "IQD":
+                            instance.to_partner.total_iqd += Decimal(
+                                instance.partner_bonus
+                            )
+                        instance.to_partner.save()
 
         # --- Handle update ---
         else:
@@ -424,15 +457,22 @@ def outgoing_money_post_save(sender, instance, created, **kwargs):
             if old_status != "Completed" and instance.status == "Completed":
                 # Deduct from from_partner if exists
                 if instance.from_partner:
-                    if instance.currency == "USD":
-                        instance.from_partner.total_usd -= Decimal(
-                            instance.money_amount
-                        )
-                    elif instance.currency == "IQD":
-                        instance.from_partner.total_iqd -= Decimal(
-                            instance.money_amount
-                        )
-                    instance.from_partner.save()
+                    if instance.from_partner == owner_safe:  # if it's the system owner
+                        if instance.currency == "USD":
+                            owner_safe.total_usd -= Decimal(instance.money_amount)
+                        elif instance.currency == "IQD":
+                            owner_safe.total_iqd -= Decimal(instance.money_amount)
+                        owner_safe.save()
+                    else:
+                        if instance.currency == "USD":
+                            instance.from_partner.total_usd -= Decimal(
+                                instance.money_amount
+                            )
+                        elif instance.currency == "IQD":
+                            instance.from_partner.total_iqd -= Decimal(
+                                instance.money_amount
+                            )
+                        instance.from_partner.save()
 
                 # Add my_bonus to owner (use new bonus amount)
                 if instance.bonus_currency == "USD":
@@ -442,12 +482,17 @@ def outgoing_money_post_save(sender, instance, created, **kwargs):
                 owner_safe.save()
 
                 # Add partner_bonus to to_partner if exists
-                if instance.to_partner:
-                    if instance.bonus_currency == "USD":
-                        instance.to_partner.total_usd += Decimal(instance.partner_bonus)
-                    elif instance.bonus_currency == "IQD":
-                        instance.to_partner.total_iqd += Decimal(instance.partner_bonus)
-                    instance.to_partner.save()
+                if not instance.is_received:
+                    if instance.to_partner:
+                        if instance.bonus_currency == "USD":
+                            instance.to_partner.total_usd += Decimal(
+                                instance.partner_bonus
+                            )
+                        elif instance.bonus_currency == "IQD":
+                            instance.to_partner.total_iqd += Decimal(
+                                instance.partner_bonus
+                            )
+                        instance.to_partner.save()
 
 
 # --- POST_DELETE: rollback money movements and bonuses ---
@@ -466,22 +511,34 @@ def outgoing_money_post_delete(sender, instance, **kwargs):
 
     with transaction.atomic():
         # Remove money_amount from to_partner
-        if instance.to_partner:
-            if instance.currency == "USD":
-                instance.to_partner.total_usd -= Decimal(instance.money_amount)
-            elif instance.currency == "IQD":
-                instance.to_partner.total_iqd -= Decimal(instance.money_amount)
-            instance.to_partner.save()
+        if not instance.is_received:
+            if instance.to_partner:
+                if instance.currency == "USD":
+                    instance.to_partner.total_usd -= Decimal(instance.money_amount)
+                elif instance.currency == "IQD":
+                    instance.to_partner.total_iqd -= Decimal(instance.money_amount)
+                instance.to_partner.save()
 
         # If status was Completed, rollback bonuses and from_partner deduction
         if instance.status == "Completed":
             # Refund from_partner if exists
             if instance.from_partner:
-                if instance.currency == "USD":
-                    instance.from_partner.total_usd += Decimal(instance.money_amount)
-                elif instance.currency == "IQD":
-                    instance.from_partner.total_iqd += Decimal(instance.money_amount)
-                instance.from_partner.save()
+                if instance.from_partner == owner_safe:  # if it's the system owner
+                    if instance.currency == "USD":
+                        owner_safe.total_usd += Decimal(instance.money_amount)
+                    elif instance.currency == "IQD":
+                        owner_safe.total_iqd += Decimal(instance.money_amount)
+                    owner_safe.save()
+                else:
+                    if instance.currency == "USD":
+                        instance.from_partner.total_usd += Decimal(
+                            instance.money_amount
+                        )
+                    elif instance.currency == "IQD":
+                        instance.from_partner.total_iqd += Decimal(
+                            instance.money_amount
+                        )
+                    instance.from_partner.save()
 
             # Remove my_bonus from owner
             if instance.bonus_currency == "USD":
@@ -491,12 +548,13 @@ def outgoing_money_post_delete(sender, instance, **kwargs):
             owner_safe.save()
 
             # Remove partner_bonus from to_partner if exists
-            if instance.to_partner:
-                if instance.bonus_currency == "USD":
-                    instance.to_partner.total_usd -= Decimal(instance.partner_bonus)
-                elif instance.bonus_currency == "IQD":
-                    instance.to_partner.total_iqd -= Decimal(instance.partner_bonus)
-                instance.to_partner.save()
+            if not instance.is_received:
+                if instance.to_partner:
+                    if instance.bonus_currency == "USD":
+                        instance.to_partner.total_usd -= Decimal(instance.partner_bonus)
+                    elif instance.bonus_currency == "IQD":
+                        instance.to_partner.total_iqd -= Decimal(instance.partner_bonus)
+                    instance.to_partner.save()
 
 
 # *************************

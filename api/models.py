@@ -269,6 +269,7 @@ class IncomingMoney(models.Model):
         blank=True,
         related_name="incoming_from",
     )
+    is_received = models.BooleanField(default=False)
     money_amount = models.DecimalField(max_digits=20, decimal_places=2, default=0)
     currency = models.CharField(max_length=5, choices=CURRENCY_CHOICES, default="USD")
     to_partner = models.ForeignKey(
@@ -317,6 +318,7 @@ class OutgoingMoney(models.Model):
         blank=True,
         related_name="outgoing_from",
     )
+    is_received = models.BooleanField(default=False)
     from_name = models.CharField(max_length=100, blank=True, null=True)
     from_number = models.CharField(max_length=20, blank=True, null=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="Pending")

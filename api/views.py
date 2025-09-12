@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from django.utils.dateparse import parse_datetime
 from rest_framework.decorators import action
 from datetime import datetime
+from rest_framework.views import APIView
 
 today = timezone.localdate()
 
@@ -487,3 +488,60 @@ class PartnerReportViewSet(viewsets.ViewSet):
                 "outgoing_money": list(outgoing_qs),
             }
         )
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from django.db.models import Sum, F
+
+
+class TotalPendingOutgoingMoneyView(APIView):
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, *args, **kwargs):
+
+        pending_records = OutgoingMoney.objects.filter(status="Pending").annotate(
+            partner_type=F("to_partner__safe_type__name")
+        )
+        incoming_pending = IncomingMoney.objects.filter(status="Pending").annotate(
+            partner_type=F("from_partner__safe_type__name")
+        )
+        # Aggregate the total money, grouping by both currency and the annotated partner_type
+        outgoing_total_by_currency_and_type = (
+            pending_records.values("currency", "partner_type")
+            .annotate(total_money=Sum("money_amount"))
+            .order_by("currency", "partner_type")
+        )
+        incoming_total_by_currency_and_type = (
+            incoming_pending.values("currency", "partner_type")
+            .annotate(total_money=Sum("money_amount"))
+            .order_by("currency", "partner_type")
+        )
+        # Prepare the response data in a more structured format
+        outgoing_response_data = {}
+        for item in outgoing_total_by_currency_and_type:
+            currency = item["currency"]
+            partner_type = item["partner_type"]
+            total = item["total_money"]
+
+            if currency not in outgoing_response_data:
+                outgoing_response_data[currency] = {}
+
+            outgoing_response_data[currency][partner_type] = total
+        incoming_response_data = {}
+        for item in incoming_total_by_currency_and_type:
+            currency = item["currency"]
+            partner_type = item["partner_type"]
+            total = item["total_money"]
+
+            if currency not in incoming_response_data:
+                incoming_response_data[currency] = {}
+
+            incoming_response_data[currency][partner_type] = total
+
+        final_response = {
+            "outgoing": outgoing_response_data,  # This is your existing outgoing data
+            "incoming": incoming_response_data,
+        }
+        return Response(final_response)
