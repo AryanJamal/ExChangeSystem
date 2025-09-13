@@ -18,6 +18,12 @@ from rest_framework.views import APIView
 today = timezone.localdate()
 
 
+def get_today_range():
+    start = timezone.make_aware(datetime.combine(today, datetime.min.time()))
+    end = timezone.make_aware(datetime.combine(today, datetime.max.time()))
+    return start, end
+
+
 # SafeType
 class SafeTypeViewSet(viewsets.ModelViewSet):
     queryset = SafeType.objects.all()
@@ -114,9 +120,9 @@ class CryptoTransactionViewSet(viewsets.ModelViewSet):
                     # Handle invalid date format if necessary
                     pass
         else:
-            queryset = queryset.filter(created_at__date=today)
-        # You can add ordering here if you want default ordering
-        # For example, order by creation date descending
+            start, end = get_today_range()
+            queryset = queryset.filter(created_at__gte=start, created_at__lte=end)
+
         queryset = queryset.order_by("-created_at")
 
         return queryset
@@ -169,8 +175,8 @@ class IncomingMoneyViewSet(viewsets.ModelViewSet):
 
         # If no filters are provided, default to today's records
         if not is_filtered:
-            today = timezone.localdate()
-            queryset = queryset.filter(created_at__date=today)
+            start, end = get_today_range()
+            queryset = queryset.filter(created_at__gte=start, created_at__lte=end)
 
         # Apply search functionality
         search_query = query_params.get("search", "").strip()
@@ -240,8 +246,8 @@ class OutgoingMoneyViewSet(viewsets.ModelViewSet):
 
         # If no filters are provided, default to today's records
         if not is_filtered:
-            today = timezone.localdate()
-            queryset = queryset.filter(created_at__date=today)
+            start, end = get_today_range()
+            queryset = queryset.filter(created_at__gte=start, created_at__lte=end)
 
         # 1. Handle search query
         search_query = query_params.get("search", None)
@@ -289,17 +295,65 @@ class OutgoingMoneyViewSet(viewsets.ModelViewSet):
 class SafeTransactionViewSet(viewsets.ModelViewSet):
     queryset = SafeTransaction.objects.all().order_by("-created_at")
     permission_classes = [IsAuthenticated]
+    pagination_class = TenPerPagePagination
 
     def get_serializer_class(self):
         if self.request.method == "POST":
             return SafeTransactionPostSerializer
         return SafeTransactionGetSerializer
 
+    def get_queryset(self):
+        start, end = get_today_range()
+        queryset = (
+            SafeTransaction.objects.all()
+            .order_by("-created_at")
+            .filter(created_at__gte=start, created_at__lte=end)
+        )
+        params = self.request.query_params
+
+        search = params.get("search")
+        transaction_type = params.get("transaction_type")
+
+        # 🔍 Search across all SafePartner foreign keys (partner names)
+        if search:
+            queryset = queryset.filter(
+                Q(partner__partner__name__icontains=search)
+                | Q(from_safepartner__partner__name__icontains=search)
+                | Q(to_safepartner__partner__name__icontains=search)
+                | Q(note__icontains=search)
+                | Q(money_amount__icontains=search)
+            )
+
+        # 🎯 Filter by transaction_type
+        if transaction_type:
+            queryset = queryset.filter(transaction_type=transaction_type)
+
+        return queryset
+
 
 class DebtViewSet(viewsets.ModelViewSet):
     queryset = Debt.objects.all().order_by("-created_at")
     serializer_class = DebtSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = TenPerPagePagination
+
+    def get_queryset(self):
+        queryset = Debt.objects.all().order_by("-created_at")
+        params = self.request.query_params
+
+        search = params.get("search")
+        transaction_type = params.get("transaction_type")
+
+        # 🔍 Search across all SafePartner foreign keys (partner names)
+        if search:
+            queryset = queryset.filter(
+                Q(safe_partner__partner__name__icontains=search)
+                | Q(debtor_name__icontains=search)
+                | Q(debtor_phone__icontains=search)
+                | Q(note__icontains=search)
+                | Q(total_amount__icontains=search)
+            )
+        return queryset
 
 
 class DebtRepaymentViewSet(viewsets.ModelViewSet):
@@ -464,6 +518,14 @@ class PartnerReportViewSet(viewsets.ViewSet):
             .values()
             .order_by("-created_at")
         )
+        crypto_qs1 = (
+            CryptoTransaction.objects.filter(
+                Q(partner_client__partner__name=partner_name),
+                **date_filter,
+            )
+            .values()
+            .order_by("-created_at")
+        )
 
         # ✅ Incoming Money
         incoming_qs = (
@@ -474,31 +536,48 @@ class PartnerReportViewSet(viewsets.ViewSet):
             .values()
             .order_by("-created_at")
         )
+        incoming_qs1 = (
+            IncomingMoney.objects.filter(
+                Q(from_partner__partner__name=partner_name),
+                **date_filter,
+            )
+            .values()
+            .order_by("-created_at")
+        )
 
         # ✅ Outgoing Money
-        outgoing_qs = OutgoingMoney.objects.filter(
-            Q(from_partner__partner__name=partner_name),
-            **date_filter,
-        ).values()
+        outgoing_qs = (
+            OutgoingMoney.objects.filter(
+                Q(from_partner__partner__name=partner_name),
+                **date_filter,
+            )
+            .values()
+            .order_by("-created_at")
+        )
+        outgoing_qs1 = (
+            OutgoingMoney.objects.filter(
+                Q(to_partner__partner__name=partner_name),
+                **date_filter,
+            )
+            .values()
+            .order_by("-created_at")
+        )
 
         return Response(
             {
                 "partner": partner.name,
                 "crypto_transactions": list(crypto_qs),
+                "crypto_transactions1": list(crypto_qs1),
                 "incoming_money": list(incoming_qs),
+                "incoming_money1": list(incoming_qs1),
                 "outgoing_money": list(outgoing_qs),
+                "outgoing_money1": list(outgoing_qs1),
             }
         )
 
 
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from django.db.models import Sum, F
-
-
 class TotalPendingOutgoingMoneyView(APIView):
-
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
 
