@@ -303,12 +303,7 @@ class SafeTransactionViewSet(viewsets.ModelViewSet):
         return SafeTransactionGetSerializer
 
     def get_queryset(self):
-        start, end = get_today_range()
-        queryset = (
-            SafeTransaction.objects.all()
-            .order_by("-created_at")
-            .filter(created_at__gte=start, created_at__lte=end)
-        )
+        queryset = SafeTransaction.objects.all().order_by("-created_at")
         params = self.request.query_params
 
         search = params.get("search")
@@ -577,7 +572,7 @@ class PartnerReportViewSet(viewsets.ViewSet):
 
 
 class TotalPendingOutgoingMoneyView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get(self, request, *args, **kwargs):
 
@@ -587,6 +582,12 @@ class TotalPendingOutgoingMoneyView(APIView):
         incoming_pending = IncomingMoney.objects.filter(status="Pending").annotate(
             partner_type=F("from_partner__safe_type__name")
         )
+        crypto_pending = CryptoTransaction.objects.filter(
+            status="Pending", transaction_type="Sell"
+        ).annotate(partner_type=F("payment_safe__name"))
+        crypto_pending1 = CryptoTransaction.objects.filter(
+            status="Pending", transaction_type="Buy"
+        ).annotate(partner_type=F("payment_safe__name"))
         # Aggregate the total money, grouping by both currency and the annotated partner_type
         outgoing_total_by_currency_and_type = (
             pending_records.values("currency", "partner_type")
@@ -596,6 +597,16 @@ class TotalPendingOutgoingMoneyView(APIView):
         incoming_total_by_currency_and_type = (
             incoming_pending.values("currency", "partner_type")
             .annotate(total_money=Sum("money_amount"))
+            .order_by("currency", "partner_type")
+        )
+        crypto_total_by_currency_and_type = (
+            crypto_pending.values("currency", "partner_type")
+            .annotate(total_money=Sum("usdt_price"))
+            .order_by("currency", "partner_type")
+        )
+        crypto_total_by_currency_and_type1 = (
+            crypto_pending1.values("currency", "partner_type")
+            .annotate(total_money=Sum("usdt_price"))
             .order_by("currency", "partner_type")
         )
         # Prepare the response data in a more structured format
@@ -619,9 +630,31 @@ class TotalPendingOutgoingMoneyView(APIView):
                 incoming_response_data[currency] = {}
 
             incoming_response_data[currency][partner_type] = total
+        crypto_response_data = {}
+        for item in crypto_total_by_currency_and_type:
+            currency = item["currency"]
+            partner_type = item["partner_type"]
+            total = item["total_money"]
+
+            if currency not in crypto_response_data:
+                crypto_response_data[currency] = {}
+
+            crypto_response_data[currency][partner_type] = total
+        crypto_response_data1 = {}
+        for item in crypto_total_by_currency_and_type1:
+            currency = item["currency"]
+            partner_type = item["partner_type"]
+            total = item["total_money"]
+
+            if currency not in crypto_response_data1:
+                crypto_response_data1[currency] = {}
+
+            crypto_response_data1[currency][partner_type] = total
 
         final_response = {
             "outgoing": outgoing_response_data,  # This is your existing outgoing data
             "incoming": incoming_response_data,
+            "crypto": crypto_response_data,
+            "crypto1": crypto_response_data1,
         }
         return Response(final_response)
