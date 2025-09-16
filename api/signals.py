@@ -135,16 +135,17 @@ def crypto_txn_post_save(sender, instance, created, **kwargs):
             # Status changed Pending -> Completed
             if instance._old_status == "Pending" and instance.status == "Completed":
                 _apply_fiat_and_bonus(instance, payment_safe, crypto_safe)
-                if instance.transaction_type == "Buy":
-                    if instance.currency == "USD":
-                        instance.partner_client.total_usd -= instance.usdt_price
-                    if instance.currency == "IQD":
-                        instance.partner_client.total_iqd -= instance.usdt_price
-                elif instance.transaction_type == "Sell":
-                    if instance.currency == "USD":
-                        instance.partner_client.total_usd += instance.usdt_price
-                    if instance.currency == "IQD":
-                        instance.partner_client.total_iqd += instance.usdt_price
+                if instance.partner_client:
+                    if instance.transaction_type == "Buy":
+                        if instance.currency == "USD":
+                            instance.partner_client.total_usd -= instance.usdt_price
+                        if instance.currency == "IQD":
+                            instance.partner_client.total_iqd -= instance.usdt_price
+                    elif instance.transaction_type == "Sell":
+                        if instance.currency == "USD":
+                            instance.partner_client.total_usd += instance.usdt_price
+                        if instance.currency == "IQD":
+                            instance.partner_client.total_iqd += instance.usdt_price
 
         crypto_safe.save()
         payment_safe.save()
@@ -171,7 +172,6 @@ def crypto_txn_post_delete(sender, instance, **kwargs):
         return
 
     with transaction.atomic():
-        # Reverse USDT balance
         if instance.transaction_type == "Buy":
             crypto_safe.total_usdt -= Decimal(instance.usdt_amount)
         elif instance.transaction_type == "Sell":

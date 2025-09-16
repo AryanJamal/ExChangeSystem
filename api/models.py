@@ -1,6 +1,6 @@
 from django.db import models
-
 from decimal import Decimal
+from simple_history.models import HistoricalRecords
 
 
 # ------------------------------------
@@ -43,6 +43,7 @@ class SafePartner(models.Model):
     total_usd = models.DecimalField(max_digits=20, decimal_places=2, default=0)
     total_usdt = models.DecimalField(max_digits=20, decimal_places=2, default=0)
     total_iqd = models.BigIntegerField(default=0)
+    history = HistoricalRecords()
 
     class Meta:
         unique_together = ("partner", "safe_type")

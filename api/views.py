@@ -12,16 +12,26 @@ from django.db.models import Sum, F, DecimalField, Case, When
 from rest_framework.response import Response
 from django.utils.dateparse import parse_datetime
 from rest_framework.decorators import action
-from datetime import datetime
+from datetime import datetime, time
 from rest_framework.views import APIView
+import pytz
 
-today = timezone.localdate()
+baghdad_tz = pytz.timezone("Asia/Baghdad")
 
 
 def get_today_range():
-    start = timezone.make_aware(datetime.combine(today, datetime.min.time()))
-    end = timezone.make_aware(datetime.combine(today, datetime.max.time()))
-    return start, end
+    # Get current date in Baghdad timezone
+    now_baghdad = timezone.now().astimezone(baghdad_tz)
+    today_baghdad = now_baghdad.date()
+
+    # Create start and end of day in Baghdad timezone
+    start_baghdad = baghdad_tz.localize(datetime.combine(today_baghdad, time.min))
+    end_baghdad = baghdad_tz.localize(datetime.combine(today_baghdad, time.max))
+
+    # Convert to UTC for database queries (Django stores datetime in UTC)
+    start_utc = start_baghdad.astimezone(pytz.UTC)
+    end_utc = end_baghdad.astimezone(pytz.UTC)
+    return start_utc, end_utc
 
 
 # SafeType
@@ -154,7 +164,7 @@ class IncomingMoneyViewSet(viewsets.ModelViewSet):
         return IncomingMoneyGetSerializer
 
     def get_queryset(self):
-        queryset = IncomingMoney.objects.all().order_by("-created_at")
+        queryset = super().get_queryset()
         query_params = self.request.query_params
 
         if self.action in ["retrieve", "update", "partial_update", "destroy"]:
@@ -176,7 +186,7 @@ class IncomingMoneyViewSet(viewsets.ModelViewSet):
         # If no filters are provided, default to today's records
         if not is_filtered:
             start, end = get_today_range()
-            queryset = queryset.filter(created_at__gte=start, created_at__lte=end)
+            return queryset.filter(created_at__gte=start, created_at__lte=end).order_by("-created_at")
 
         # Apply search functionality
         search_query = query_params.get("search", "").strip()
@@ -196,10 +206,16 @@ class IncomingMoneyViewSet(viewsets.ModelViewSet):
 
         start_date = query_params.get("start_date")
         end_date = query_params.get("end_date")
-        if start_date:
-            queryset = queryset.filter(created_at__date__gte=start_date)
-        if end_date:
-            queryset = queryset.filter(created_at__date__lte=end_date)
+        if start_date != end_date:
+            if start_date:
+                # Filter for transactions on or after the start date
+                queryset = queryset.filter(created_at__gte=start_date)
+
+            if end_date:
+                # Filter for transactions on or before the end date
+                queryset = queryset.filter(created_at__lte=end_date)
+        elif start_date == end_date:
+            queryset = queryset.filter(created_at__date=start_date)
 
         from_partner_id = query_params.get("from_partner")
         to_partner_id = query_params.get("to_partner")
@@ -247,7 +263,7 @@ class OutgoingMoneyViewSet(viewsets.ModelViewSet):
         # If no filters are provided, default to today's records
         if not is_filtered:
             start, end = get_today_range()
-            queryset = queryset.filter(created_at__gte=start, created_at__lte=end)
+            return queryset.filter(created_at__gte=start, created_at__lte=end).order_by("-created_at")
 
         # 1. Handle search query
         search_query = query_params.get("search", None)
@@ -271,13 +287,16 @@ class OutgoingMoneyViewSet(viewsets.ModelViewSet):
         start_date = query_params.get("start_date", None)
         end_date = query_params.get("end_date", None)
 
-        if start_date:
-            # Filter for transactions on or after the start date
-            queryset = queryset.filter(created_at__gte=start_date)
+        if start_date != end_date:
+            if start_date:
+                # Filter for transactions on or after the start date
+                queryset = queryset.filter(created_at__gte=start_date)
 
-        if end_date:
-            # Filter for transactions on or before the end date
-            queryset = queryset.filter(created_at__lte=end_date)
+            if end_date:
+                # Filter for transactions on or before the end date
+                queryset = queryset.filter(created_at__lte=end_date)
+        elif start_date == end_date:
+            queryset = queryset.filter(created_at__date=start_date)
 
         # 4. Handle partner filters
         from_partner_id = query_params.get("from_partner", None)
@@ -308,6 +327,8 @@ class SafeTransactionViewSet(viewsets.ModelViewSet):
 
         search = params.get("search")
         transaction_type = params.get("transaction_type")
+        start_date = params.get("start_date", None)
+        end_date = params.get("end_date", None)
 
         # 🔍 Search across all SafePartner foreign keys (partner names)
         if search:
@@ -323,6 +344,17 @@ class SafeTransactionViewSet(viewsets.ModelViewSet):
         if transaction_type:
             queryset = queryset.filter(transaction_type=transaction_type)
 
+        if start_date != end_date:
+            if start_date:
+                # Filter for transactions on or after the start date
+                queryset = queryset.filter(created_at__gte=start_date)
+
+            if end_date:
+                # Filter for transactions on or before the end date
+                queryset = queryset.filter(created_at__lte=end_date)
+        elif start_date == end_date:
+            queryset = queryset.filter(created_at__date=start_date)
+
         return queryset
 
 
@@ -337,9 +369,7 @@ class DebtViewSet(viewsets.ModelViewSet):
         params = self.request.query_params
 
         search = params.get("search")
-        transaction_type = params.get("transaction_type")
 
-        # 🔍 Search across all SafePartner foreign keys (partner names)
         if search:
             queryset = queryset.filter(
                 Q(safe_partner__partner__name__icontains=search)
@@ -418,13 +448,7 @@ class TodayBonusViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     def list(self, request):
-        today = timezone.now().date()
-        start = timezone.datetime.combine(
-            today, timezone.datetime.min.time(), tzinfo=timezone.get_current_timezone()
-        )
-        end = timezone.datetime.combine(
-            today, timezone.datetime.max.time(), tzinfo=timezone.get_current_timezone()
-        )
+        start, end = get_today_range()
 
         crypto_qs = CryptoTransaction.objects.filter(
             created_at__gte=start, created_at__lte=end
@@ -447,11 +471,7 @@ class MonthBonusViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     def list(self, request):
-        now = timezone.now()
-        start = timezone.datetime(
-            now.year, now.month, 1, tzinfo=timezone.get_current_timezone()
-        )
-        end = timezone.now()  # now for up-to-current moment
+        start, end = get_today_range()
 
         crypto_qs = CryptoTransaction.objects.filter(
             created_at__gte=start, created_at__lte=end
@@ -583,10 +603,14 @@ class TotalPendingOutgoingMoneyView(APIView):
             partner_type=F("from_partner__safe_type__name")
         )
         crypto_pending = CryptoTransaction.objects.filter(
-            status="Pending", transaction_type="Sell"
+            status="Pending",
+            transaction_type="Sell",
+            partner_client__isnull=False,
         ).annotate(partner_type=F("payment_safe__name"))
         crypto_pending1 = CryptoTransaction.objects.filter(
-            status="Pending", transaction_type="Buy"
+            status="Pending",
+            transaction_type="Buy",
+            partner_client__isnull=False,
         ).annotate(partner_type=F("payment_safe__name"))
         # Aggregate the total money, grouping by both currency and the annotated partner_type
         outgoing_total_by_currency_and_type = (

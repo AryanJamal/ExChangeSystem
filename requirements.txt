@@ -13,5 +13,6 @@ tzdata==2025.2
 uvicorn==0.35.0
 whitenoise==6.9.0
 django-cors-headers==4.7.0
-python-dotenv
-djangorestframework-simplejwt
+python-dotenv==1.1.1
+djangorestframework-simplejwt==5.5.1
+django-simple-history==3.10.1

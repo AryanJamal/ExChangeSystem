@@ -94,6 +94,8 @@ class SafePartnerCreateSerializer(serializers.ModelSerializer):
 class CryptoTransactionGetSerializer(serializers.ModelSerializer):
     partner = SafePartnerSerializer(read_only=True)
     partner_client = SafePartnerSerializer(read_only=True)
+    crypto_safe = SafeTypeSerializer(read_only=True)
+    payment_safe = SafeTypeSerializer(read_only=True)
 
     class Meta:
         model = CryptoTransaction
@@ -146,7 +148,7 @@ class IncomingMoneyPostSerializer(serializers.ModelSerializer):
             "from_partner",
             "money_amount",
             "currency",
-            'is_received',
+            "is_received",
             "to_partner",
             "to_name",
             "to_number",
@@ -182,7 +184,7 @@ class OutgoingMoneyPostSerializer(serializers.ModelSerializer):
         fields = [
             "from_partner",
             "money_amount",
-            'is_received',
+            "is_received",
             "currency",
             "to_partner",
             "from_name",
